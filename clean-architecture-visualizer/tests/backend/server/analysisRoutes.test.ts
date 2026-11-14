@@ -1,5 +1,5 @@
+import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
-import type { AddressInfo } from 'net';
 import { SessionDBAccess } from '../../../src/data_access/sessionDBAccess.js';
 import { useCaseGraph } from '../../../src/entity/useCaseGraph.js';
 import { startServer, stopServer } from '../../../src/server/server.js';
@@ -46,6 +46,24 @@ describe('analysis routes', () => {
           interactions: [{ interaction_id: 'uc-0', interaction_name: 'login' }],
         },
       ],
+    });
+  });
+
+  it('answers an unknown use case id with 404', async () => {
+    const res = await fetch(`${baseUrl}/analysis/interaction/uc-999`);
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: "Interaction 'uc-999' not found.",
+    });
+  });
+
+  it('answers violations for an unknown use case id with 404', async () => {
+    const res = await fetch(`${baseUrl}/analysis/violations/uc-999`);
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: "Interaction 'uc-999' not found.",
     });
   });
 });

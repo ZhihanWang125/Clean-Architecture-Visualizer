@@ -1,8 +1,8 @@
 #!/usr/bin/env node
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = path.resolve(__dirname, '../../package.json');
@@ -33,7 +33,7 @@ program
 program
   .command('verify')
   .description(
-    'Verify whether the use cases found in child directories adhere to Clean Architeccture'
+    'Verify whether the use cases found in child directories adhere to Clean Architecture'
   )
   .action(async () => {
     await app.runCLIGraphVerification();

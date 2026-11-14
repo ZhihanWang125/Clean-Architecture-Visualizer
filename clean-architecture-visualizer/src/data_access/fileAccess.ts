@@ -2,6 +2,7 @@ import type { Dirent } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Relationship, RelationshipType } from '../types/relationship.js';
+import { globalDependencyRegistry } from './dependency-registry.js';
 import type { FileAccessInterface } from './fileAccessInterface.js';
 
 export class FileAccess implements FileAccessInterface {
@@ -71,6 +72,35 @@ export class FileAccess implements FileAccessInterface {
     await this.collectFiles(target, paths);
   }
 
+  async getAllSourceFiles(curr: string = process.cwd()): Promise<string[]> {
+    const srcPath = (await this.bfsFindDir(curr, 'src')) ?? curr;
+    const result: string[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (
+          FileAccess.ignoredDirNames.has(entry.name) ||
+          entry.name.startsWith('.')
+        ) {
+          continue;
+        }
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isFile()) {
+          result.push(fullPath);
+        } else if (entry.isDirectory()) {
+          await walk(fullPath);
+        }
+      }
+    };
+    await walk(srcPath);
+    return result;
+  }
+
   /**
    * Recursively collect all files, on encountering a directory, enter it and continue
    * collecting files.
@@ -108,7 +138,8 @@ export class FileAccess implements FileAccessInterface {
     const visited = new Set<string>();
 
     while (queue.length > 0) {
-      const currentPath = queue.shift()!;
+      const currentPath = queue.shift();
+      if (currentPath === undefined) break;
 
       if (visited.has(currentPath)) continue;
       visited.add(currentPath);
@@ -171,6 +202,10 @@ export class FileAccess implements FileAccessInterface {
    * @param filePath is a path to a valid file.
    */
   async getFileImports(filePath: string): Promise<Relationship[]> {
+    const cached = globalDependencyRegistry.get(filePath);
+    if (cached) {
+      return [...cached];
+    }
     try {
       const fileContent: string = await fs.readFile(filePath, {
         encoding: 'utf-8',
@@ -212,6 +247,25 @@ export class FileAccess implements FileAccessInterface {
           trimmedLine.startsWith('from ') ||
           trimmedLine.startsWith('import{')
         ) {
+          const wildcardMatch = trimmedLine.match(/^import\s+([\w.]+)\.\*;$/);
+          if (wildcardMatch) {
+            const packagePath = wildcardMatch[1];
+
+            const dir = await this.getPackageDirectory(packagePath);
+
+            if (dir) {
+              const currFileName = path.basename(filePath);
+              const files = await fs.readdir(dir);
+              for (const file of files) {
+                if (file !== currFileName) {
+                  const name = file.replace(/\.[^.]+$/, '');
+                  knownNames.set(name, name);
+                }
+              }
+            }
+            continue;
+          }
+
           const lastSpace = trimmedLine.lastIndexOf(' ');
           const name = trimmedLine.substring(lastSpace + 1).replace(/;$/, '');
           if (!found.has(name)) found.set(name, 'dependency');
@@ -268,6 +322,16 @@ export class FileAccess implements FileAccessInterface {
           }
         }
       }
+
+      // Only do this for Java files, since fully qualified names are a Java thing
+      // A fully qualified name is the class's full name. (Skipping import and writing full every time)
+      if (filePath.endsWith('.java')) {
+        for (const fqn of this.getFullyQualifiedImportsJava(fileLines)) {
+          if (!found.has(fqn)) {
+            found.set(fqn, 'dependency');
+          }
+        }
+      }
       return [...found].map(([fileName, relationshipType]) => ({
         fileName,
         relationshipType,
@@ -278,12 +342,69 @@ export class FileAccess implements FileAccessInterface {
     }
   }
 
+  /**
+   * Finds class names written in the code,
+   * e.g. "entity.User", where there is no import line for them.
+   */
+  private getFullyQualifiedImportsJava(fileLines: string[]): string[] {
+    const found = new Set<string>();
+
+    // Pattern to spot a full class name in text. Ex: entity.User, use_case.login.LoginData
+    // one or more lowercase words followed by a dot.
+    // then any capitalized package folders followed by a dot, Ex: interface_adapter.EnrollStudent.
+    // then a word that starts with a capital letter
+    // makes sure at least one lowercase letter so this.CONST will not be allowed.
+    const fqnPattern =
+      /\b(?:[a-z_][a-z0-9_]*\.)+(?:[A-Z][A-Za-z0-9_]*\.)*[A-Z][A-Za-z0-9_]*[a-z][A-Za-z0-9_]*/g;
+
+    for (const line of fileLines) {
+      const trimmedLine = line.trim();
+
+      // Skip import and package lines since they are already handled
+      if (
+        trimmedLine.startsWith('import ') ||
+        trimmedLine.startsWith('package ')
+      ) {
+        continue;
+      }
+      // Accounts for comments.
+      const code = trimmedLine.replace(/\/\/.*$/, '');
+      for (const match of code.matchAll(fqnPattern)) {
+        found.add(match[0]);
+      }
+    }
+    return [...found];
+  }
+
   private static isCommentLine(trimmedLine: string): boolean {
     return (
       trimmedLine.startsWith('//') ||
       trimmedLine.startsWith('/*') ||
       trimmedLine.startsWith('*')
     );
+  }
+
+  /**
+   *Finds and returns the filepath of the directory of the provided package using bfsFindDir()
+   * @param packagePath the filepath of the directory given in dot format (student.example.entities)
+   * @returns the path of the directory that matches the path of the given package
+   */
+  private async getPackageDirectory(
+    packagePath: string
+  ): Promise<string | null> {
+    const currPath = process.cwd();
+    const srcPath = await this.bfsFindDir(currPath, 'src');
+    if (!srcPath) return null;
+    const pathSegments = packagePath.split('.');
+    let currDir = srcPath;
+
+    for (const seg of pathSegments) {
+      const found = await this.bfsFindDir(currDir, seg);
+      if (!found) return null;
+      currDir = found;
+    }
+
+    return currDir;
   }
 
   /**

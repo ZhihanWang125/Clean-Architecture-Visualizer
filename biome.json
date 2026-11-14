@@ -6,7 +6,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!docs", "!**/*.min.js"],
+    "includes": [
+      "**",
+      "!docs",
+      "!**/*.min.js",
+      "!**/frontend/public/mockServiceWorker.js"
+    ],
     "ignoreUnknown": false
   },
   "formatter": {
@@ -16,7 +21,38 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "complexity": {
+        "noUselessFragments": "error",
+        "useOptionalChain": "error"
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "error",
+        "noUnusedImports": "error"
+      },
+      "style": {
+        "useNamingConvention": "warn",
+        "useFilenamingConvention": {
+          "level": "warn",
+          "options": {
+            "filenameCases": ["kebab-case"]
+          }
+        },
+        "noDefaultExport": "warn",
+        "noNonNullAssertion": "error",
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": {
+            "syntax": "shorthand"
+          }
+        },
+        "useImportType": "error",
+        "useNodejsImportProtocol": "error",
+        "useTemplate": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      }
     }
   },
   "javascript": {
@@ -37,6 +73,16 @@
     {
       "includes": ["**/src/assets/**/*.svg"],
       "linter": { "rules": { "a11y": { "noSvgWithoutTitle": "off" } } }
+    },
+    {
+      "includes": ["**/*.config.ts", "**/*.config.js", "**/*.d.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
     }
   ]
 }

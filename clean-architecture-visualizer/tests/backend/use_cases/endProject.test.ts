@@ -1,5 +1,4 @@
 import {
-  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -18,7 +17,7 @@ let mockStopServer: jest.Mock;
 
 describe('AppBuilder runEndProject', () => {
   let appBuilder: InstanceType<typeof AppBuilder>;
-  let mockDb: { resetDB: jest.Mock };
+  let mockDb: InstanceType<typeof SessionDBAccess>;
 
   beforeAll(async () => {
     jest.resetModules();
@@ -39,9 +38,9 @@ describe('AppBuilder runEndProject', () => {
   });
 
   beforeEach(() => {
-    mockDb = { resetDB: jest.fn() };
-    appBuilder = new AppBuilder();
-    (appBuilder as any).db = mockDb;
+    mockDb = new SessionDBAccess();
+    jest.spyOn(mockDb, 'resetDB');
+    appBuilder = new AppBuilder().withSessionDBAccess(mockDb);
     mockStopServer.mockReset();
   });
 
@@ -58,8 +57,7 @@ describe('AppBuilder runEndProject', () => {
 
     expect(realDb.getProjectName()).toBe('test-project');
 
-    appBuilder = new AppBuilder();
-    (appBuilder as any).db = realDb;
+    appBuilder = new AppBuilder().withSessionDBAccess(realDb);
 
     await appBuilder.runEndProject();
 
@@ -91,8 +89,7 @@ describe('Server lifecycle', () => {
 
     const db = new SessionDBAccess();
     const server = await startServer(true, db);
-    const appBuilder = new AppBuilder();
-    (appBuilder as any).db = db;
+    const appBuilder = new AppBuilder().withSessionDBAccess(db);
 
     await appBuilder.runEndProject();
 
